@@ -27,14 +27,19 @@ def main():
     num_servers = 2
     sub_A1 = A[:2, :]
     sub_A2 = A[2:, :]
-    submatrices = [sub_A1, sub_A2]
     
     servers = [('localhost', 65432), ('localhost', 65433)]
     result_queue = Queue()
     processes = []
     
+    num_servers = len(servers)
+    submatrices = np.array_split(A, num_servers, axis=0)
+
     for i, (host, port) in enumerate(servers):
-        p = Process(target=send_to_server, args=(host, port, submatrices[i], B, result_queue))
+        p = Process(
+        target=send_to_server,
+        args=(host, port, submatrices[i], B, result_queue)
+    )
         processes.append(p)
         p.start()
         
