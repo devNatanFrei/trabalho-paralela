@@ -19,8 +19,8 @@ def send_to_server(host, port, sub_A, B, result_queue):
         
 def main():
     
-    A = np.random.rand(4,4)
-    B = np.random.rand(4, 4)
+    A = np.array([[1, 0, -1], [4, -1, 2], [-1, 2, 4]])
+    B = np.array([[-1, 2, -3], [5, -4, 2], [4, 1, 0]])
     print("Matrix A:\n", A)
     print("Matrix B:\n", B)
     
