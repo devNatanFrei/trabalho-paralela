@@ -1,79 +1,196 @@
 import socket
-from multiprocessing import Process, Queue
-import numpy as np 
 import pickle
+import numpy as np
+from threading import Thread
+from queue import Queue, Empty
 
-def send_to_server(host, port, sub_A, B, result_queue):
+def enviar_para_servidor(indice_original, endereco_host, porta_str, sub_matriz_A, matriz_B, fila_resultados):
+    socket_cliente = None
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect((host, port))
-            data = pickle.dumps((sub_A, B))
-            client_socket.sendall(data)
-            
-            result_data = client_socket.recv(4096)
-            result = pickle.loads(result_data)
-            result_queue.put((port, result))
-    except Exception as e:
-        print(f"Error connecting to server {host}:{port} - {e}")
-        result_queue.put((port, None))
+        porta = int(porta_str)
+        socket_cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        socket_cliente.settimeout(15)
+       
+        socket_cliente.connect((endereco_host, porta))
         
-def main():
-    
-    A = np.array([[1, 0, -1], [4, -1, 2], [-1, 2, 4]])
-    B = np.array([[-1, 2, -3], [5, -4, 2], [4, 1, 0]])
-    print("Matrix A:\n", A)
-    print("Matrix B:\n", B)
-    
-    num_servers = 2
-    sub_A1 = A[:2, :]
-    sub_A2 = A[2:, :]
-    
-    servers = [('localhost', 65432), ('localhost', 65433)]
-    result_queue = Queue()
-    processes = []
-    
-    num_servers = len(servers)
-    submatrices = np.array_split(A, num_servers, axis=0)
 
-    for i, (host, port) in enumerate(servers):
-        p = Process(
-        target=send_to_server,
-        args=(host, port, submatrices[i], B, result_queue)
-    )
-        processes.append(p)
-        p.start()
-        
-    for p in processes:
-        p.join()
-        
-    results = [result_queue.get() for _ in range(num_servers)]
-    print(results)
-    results.sort(key=lambda x: x[0])  
-
-   
-    partial_results = []
-    for port, res in results:
-        if res is not None:
-            print(f"Resultado do servidor na porta {port}: shape {res.shape}")
-            partial_results.append(res)
-        else:
-            print(f"Falha ao obter resultado do servidor na porta {port}")
-            return  #
-
-   
-    if len(partial_results) == num_servers:
-        C = np.vstack(partial_results)
-        print("Shape da Matriz C:", C.shape)
-        print("Resulting Matrix C:")
-        print(C)
-
+        dados = pickle.dumps((sub_matriz_A, matriz_B))
+        socket_cliente.sendall(dados)
      
-        C_expected = np.dot(A, B)
-        print("Expected Resulting Matrix C:")
-        print(C_expected)
-        print("Matrices are equal:", np.allclose(C, C_expected))
-    else:
-        print("Não foi possível obter todos os resultados parciais.")
+
+        dados_resultado_serializados = socket_cliente.recv(8192)
+        if not dados_resultado_serializados:
+            print(f"Thread {indice_original}: Nenhum dado de resultado recebido de {endereco_host}:{porta}.")
+            fila_resultados.put((indice_original, endereco_host, porta_str, None))
+            return
+
+        resultado = pickle.loads(dados_resultado_serializados)
+     
+        fila_resultados.put((indice_original, endereco_host, porta_str, resultado))
+
+    except (OSError, socket.timeout, pickle.UnpicklingError, ValueError) as e:
+        print(f"Thread {indice_original}: Erro na comunicação com {endereco_host}:{porta_str}. Erro: {e}")
+        fila_resultados.put((indice_original, endereco_host, porta_str, None))
+    except Exception as e:
+        print(f"Thread {indice_original}: Erro inesperado com servidor {endereco_host}:{porta_str}: {e}")
+        fila_resultados.put((indice_original, endereco_host, porta_str, None))
+    finally:
+        if socket_cliente:
+            try:
+                socket_cliente.close()
+               
+            except Exception as e_close:
+                print(f"Thread {indice_original}: Erro ao fechar socket para {endereco_host}:{porta_str}: {e_close}")
+
+
+def carregar_servidores_do_config(arquivo_config="servers.conf"):
+    lista_servidores = []
+    try:
+        with open(arquivo_config, 'r', encoding='utf-8') as f:
+            for numero_linha, linha_texto in enumerate(f, 1):
+                linha_texto = linha_texto.strip()
+                if linha_texto and not linha_texto.startswith('#'):
+                    try:
+                        endereco_host, porta_str = linha_texto.split(':')
+                        if not porta_str.strip().isdigit():
+                            print(f"Aviso: Porta '{porta_str}' na linha {numero_linha} do arquivo de configuração não é um número. Linha ignorada: '{linha_texto}'")
+                            continue
+                        lista_servidores.append((endereco_host.strip(), porta_str.strip()))
+                    except ValueError:
+                        print(f"Aviso: Linha mal formatada no arquivo de configuração na linha {numero_linha} ignorada: '{linha_texto}' (esperado formato host:porta)")
+    except FileNotFoundError:
+        print(f"Erro: Arquivo de configuração '{arquivo_config}' não encontrado.")
+    except Exception as e:
+        print(f"Erro ao ler o arquivo de configuração '{arquivo_config}': {e}")
+    return lista_servidores
+
+def main():
+    config_servidores = carregar_servidores_do_config()
+
+    if not config_servidores:
+        print("Nenhum servidor carregado do arquivo de configuração ou arquivo não encontrado. Encerrando.")
+        return
+
+    num_servidores = len(config_servidores)
+    print(f"Número de servidores configurados: {num_servidores}")
+
+    matriz_A = np.array([
+    [1.1, 2.2, 3.3, 4.4, 5.5],
+    [-0.5, 10.0, -0.5, 20.0, -0.5],
+    [7.0, 6.0, 5.0, 4.0, 3.0],
+    [0.1, 0.2, 0.3, 0.4, 0.5],
+    [100.0, -200.0, 300.0, -400.0, 500.0],
+    [0.0, 0.0, 15.5, 0.0, 0.0],
+    [-1.0, -2.0, -3.0, -4.0, -5.0],
+    [9.8, 8.7, 7.6, 6.5, 5.4]
+])
     
+    matriz_B = np.array([
+    [0.1, -1.0, 2.5, 0.0],
+    [1.5,  0.0, 0.5, -2.0],
+    [-2.0, 1.0, 0.0, 3.0],
+    [0.0, -3.5, 1.0, 0.2],
+    [4.0, 0.0, -0.1, 1.0]
+])
+
+    if matriz_A.shape[1] != matriz_B.shape[0]:
+        print("Erro: As matrizes A e B são incompatíveis para multiplicação.")
+        print(f"Dimensões: A={matriz_A.shape}, B={matriz_B.shape}")
+        return
+
+    if matriz_A.shape[0] < num_servidores:
+        print(f"Erro: Número de linhas em A ({matriz_A.shape[0]}) é menor que o número de servidores ({num_servidores}).")
+        print("Não é possível dividir a matriz A adequadamente.")
+        return
+
+    sub_matrizes_A = np.array_split(matriz_A, num_servidores, axis=0)
+    fila_resultados = Queue()
+    lista_threads = []
+
+
+    for i, (endereco_host, porta_str) in enumerate(config_servidores):
+        thread = Thread(target=enviar_para_servidor, args=(i, endereco_host, porta_str, sub_matrizes_A[i], matriz_B, fila_resultados))
+        lista_threads.append(thread)
+        thread.start()
+
+    for i, thread in enumerate(lista_threads):
+        thread.join()
+    
+
+    resultados_temporarios_ordenados = [None] * num_servidores
+    info_servidores_falha = {}
+    timeout_geral_fila_soma = num_servidores * 10 + 10
+
+
+
+    for _ in range(num_servidores):
+        try:
+            timeout_item_fila = (timeout_geral_fila_soma / num_servidores) if num_servidores > 0 else timeout_geral_fila_soma
+            timeout_item_fila = max(5, timeout_item_fila)
+
+            indice_original, host_serv, porta_serv, resultado_parcial = fila_resultados.get(timeout=timeout_item_fila)
+            if resultado_parcial is not None:
+                resultados_temporarios_ordenados[indice_original] = resultado_parcial
+            else:
+                resultados_temporarios_ordenados[indice_original] = None
+                info_servidores_falha[indice_original] = (host_serv, porta_serv)
+        except Empty:
+            print("Timeout ao esperar por todos os resultados da fila. Alguma thread pode ter falhado criticamente ou não colocou resultado.")
+            for idx in range(num_servidores):
+                if resultados_temporarios_ordenados[idx] is None and idx not in info_servidores_falha:
+                    info_servidores_falha[idx] = ("Desconhecido", "Desconhecida")
+            break
+
+    todos_bem_sucedidos = True
+    matrizes_resultado_final = []
+
+   
+    for i in range(num_servidores):
+        parte_resultado = resultados_temporarios_ordenados[i]
+        if isinstance(parte_resultado, np.ndarray):
+            matrizes_resultado_final.append(parte_resultado)
+          
+        else:
+            todos_bem_sucedidos = False
+            host_falha, porta_falha = info_servidores_falha.get(i, ("Desconhecido", "Desconhecida"))
+            print(f"  Parte {i}: Falha no servidor {host_falha}:{porta_falha} ou resultado não recebido.")
+
+    if todos_bem_sucedidos and matrizes_resultado_final:
+
+        try:
+            matriz_C = np.vstack(matrizes_resultado_final)
+            print("\n--- RESULTADO FINAL ---")
+            print("Matriz A:")
+            print(matriz_A)
+            print("Matriz B:")
+            print(matriz_B)
+            print("Resultado da multiplicação (A x B):")
+            print(matriz_C)
+        except ValueError as e_vstack:
+            print(f"\nErro ao empilhar os resultados para formar a matriz C: {e_vstack}")
+            print("Resultados parciais recebidos (na ordem original esperada das partes de A):")
+            for i_res, item_res in enumerate(resultados_temporarios_ordenados):
+                if isinstance(item_res, np.ndarray):
+                    print(f"  Parte {i_res} (sucesso): shape {item_res.shape}\n{item_res}")
+                else:
+                    hf, pf = info_servidores_falha.get(i_res, ("Desconhecido","Desconhecida"))
+                    print(f"  Parte {i_res} (falha no servidor {hf}:{pf} ou não recebida)")
+
+    elif not matrizes_resultado_final and not todos_bem_sucedidos:
+        print("\nNenhum resultado válido foi recebido e ocorreram falhas em todos os servidores ou threads.")
+    elif not matrizes_resultado_final:
+        print("\nNenhum resultado válido foi recebido dos servidores (possivelmente, todos falharam ou nenhum foi configurado).")
+    else:
+        print("\nResultados parciais foram recebidos, mas nem todos os servidores foram bem-sucedidos.")
+        print("A matriz C completa não pode ser formada.")
+        print("Detalhes das partes processadas:")
+        for i in range(num_servidores):
+            item = resultados_temporarios_ordenados[i]
+            if isinstance(item, np.ndarray):
+                print(f"  Parte {i} (sucesso): shape {item.shape}")
+            else:
+                host_f, porta_f = info_servidores_falha.get(i, ("Desconhecido", "Desconhecida"))
+                print(f"  Parte {i} (falha no servidor {host_f}:{porta_f} ou não recebida)")
+
 if __name__ == "__main__":
     main()
