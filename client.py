@@ -74,12 +74,24 @@ def main():
     num_servidores = len(config_servidores)
     print(f"Número de servidores configurados: {num_servidores}")
 
-    matriz_A = np.array([[ 0, -1,  2],
-                         [ 1,  0, -3],
-                         [-2,  1,  0]])
-    matriz_B = np.array([[-1,  1,  0],
-                         [ 2,  0, -2],
-                         [ 0,  3,  1]])
+    matriz_A = np.array([
+    [1.1, 2.2, 3.3, 4.4, 5.5],
+    [-0.5, 10.0, -0.5, 20.0, -0.5],
+    [7.0, 6.0, 5.0, 4.0, 3.0],
+    [0.1, 0.2, 0.3, 0.4, 0.5],
+    [100.0, -200.0, 300.0, -400.0, 500.0],
+    [0.0, 0.0, 15.5, 0.0, 0.0],
+    [-1.0, -2.0, -3.0, -4.0, -5.0],
+    [9.8, 8.7, 7.6, 6.5, 5.4]
+])
+    
+    matriz_B = np.array([
+    [0.1, -1.0, 2.5, 0.0],
+    [1.5,  0.0, 0.5, -2.0],
+    [-2.0, 1.0, 0.0, 3.0],
+    [0.0, -3.5, 1.0, 0.2],
+    [4.0, 0.0, -0.1, 1.0]
+])
 
     if matriz_A.shape[1] != matriz_B.shape[0]:
         print("Erro: As matrizes A e B são incompatíveis para multiplicação.")
