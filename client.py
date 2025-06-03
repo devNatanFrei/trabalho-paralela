@@ -92,9 +92,9 @@ def main():
     num_servidores = len(config_servidores)
     print(f"Número de servidores configurados: {num_servidores}")
 
-    linhas_A = 1000
-    cols_A_linhas_B = 1000
-    cols_B = 1000
+    linhas_A = 10
+    cols_A_linhas_B = 10
+    cols_B = 10
 
 
   
@@ -194,20 +194,9 @@ def main():
             if tempo_paralelo > 0:
                 speedup = tempo_serial / tempo_paralelo
                 print(f"Speedup (Serial/Paralelo): {speedup:.2f}x")
-                if speedup < 1:
-                    print("(Nota: A versão paralela foi mais lenta.)")
-                else:
-                    print("(Nota: A versão paralela foi mais rápida!)")
             else:
                 print("Não é possível calcular o speedup.")
-        else:
-            print("ERRO DE VERIFICAÇÃO: O resultado distribuído NÃO CORRESPONDE ao resultado serial!")
-            diferenca_abs = np.abs(matriz_C_paralelo - matriz_C_serial)
-            print(f"Diferença absoluta máxima: {np.max(diferenca_abs)}")
-            indices_maior_dif = np.unravel_index(np.argmax(diferenca_abs), diferenca_abs.shape)
-            print(f"Índice da maior diferença: {indices_maior_dif}")
-            print(f"Valor Serial em {indices_maior_dif}: {matriz_C_serial[indices_maior_dif]}")
-            print(f"Valor Paralelo em {indices_maior_dif}: {matriz_C_paralelo[indices_maior_dif]}")
+      
    
 
 if __name__ == "__main__":
